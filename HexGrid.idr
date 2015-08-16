@@ -3,31 +3,31 @@ module HexGrid
 import Data.Fin
 import Data.Vect
 
+-----------
+-- Utils --
+-----------
+
+-- Serial composition (quite useful)
+infixr 8 ^
+(^) : (a -> a) -> Nat -> (a -> a)
+(^) f Z = id
+(^) f (S k) = f . (f^k)
+
 ------------------
 -- HexDirection --
 ------------------
 
 data HexDirection = A | B | C | D | E | F 
 
-rotate : HexDirection -> HexDirection
-rotate A = B
-rotate B = C
-rotate C = D
-rotate D = E
-rotate E = F
-rotate F = A
-
-spin : Nat -> HexDirection -> HexDirection
-spin Z x = x
-spin (S k) x = spin k (rotate x)
-
-invert : HexDirection -> HexDirection
-invert x = spin 3 x
-
 instance Enum HexDirection where
-  pred x = spin 5 x
+  succ A = B
+  succ B = C
+  succ C = D
+  succ D = E
+  succ E = F
+  succ F = A
 
-  succ x = rotate x
+  pred x = (succ^5) x
 
   toNat A = 4
   toNat B = 5
@@ -36,7 +36,7 @@ instance Enum HexDirection where
   toNat E = 2
   toNat F = 3
 
-  fromNat n = spin n C
+  fromNat n = (succ^n) C
 
 instance Eq HexDirection where
   (==) A A = True
@@ -78,16 +78,12 @@ instance Enum HexPos where
   pred Origin = Origin
   pred (Pos Z C FZ) = Origin
   pred (Pos (S pr) C FZ) = Pos pr B last 
-  pred (Pos r e FZ) = Pos r (spin 5 e) last
+  pred (Pos r e FZ) = Pos r ((succ^5)  e) last
   pred (Pos r e (FS pt)) = Pos r e (weaken pt)
-
+  
   succ Origin = Pos Z C FZ
-  succ (Pos r B t) = either fLast fNotLast (strengthen (shift 1 t)) where
-    fLast x = Pos (S r) C FZ
-    fNotLast x = Pos r B x
-  succ (Pos r e t) = either fLast fNotLast (strengthen (shift 1 t)) where
-    fLast x = Pos r (rotate e) FZ
-    fNotLast x = Pos r e x
+  succ (Pos r B t) = (pred^r) (Pos (S r) C (weaken t))
+  succ (Pos r e t) = (pred^r) (Pos r (succ e) t)
 
   toNat Origin = Z
   toNat (Pos r e t) = nrings r + (toNat e)*(S r) + (finToNat t) where
@@ -96,6 +92,11 @@ instance Enum HexPos where
 
   fromNat Z = Origin
   fromNat (S k) = succ (fromNat k)
+
+-- Proof that succ (pred (Pos r e t)) = Pos r e t
+-- succ_pred : (r:Nat) -> (e:HexDirection) -> (t:(Fin (S r))) ->
+            -- succ (pred (Pos r e t)) = Pos r e t
+-- succ_pred Z C FZ = Refl
 
 instance Eq HexPos where
   (==) Origin Origin = True
