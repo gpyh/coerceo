@@ -40,17 +40,12 @@ instance Enum HexDirection where
 
 instance Eq HexDirection where
   (==) A A = True
-  (==) A _ = False
   (==) B B = True
-  (==) B _ = False
   (==) C C = True
-  (==) C _ = False
   (==) D D = True
-  (==) D _ = False
   (==) E E = True
-  (==) E _ = False
   (==) F F = True
-  (==) F _ = False
+  (==) _ _ = False
 
 -- TODO: Implement proper ordering
 instance Ord HexDirection where
