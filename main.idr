@@ -30,41 +30,21 @@ data Tile : Type where
             (a : Maybe (Piece White)) ->
             (b : Maybe (Piece Black)) -> Tile
 
+toTile : Bool -> Bool -> Bool -> Bool -> Bool -> Bool -> Tile
+toTile c d e f a b = OnBoard (p c) (p d) (p e) (p f) (p a) (p b) where
+  p : Bool -> Maybe (Piece color)
+  p False = Nothing
+  p True = Just (MkPiece color)
 
-doubleRotate : Tile -> Tile
-doubleRotate (OnBoard c d e f a b) = OnBoard a b c d e f
-doubleRotate t = t
+rotate : Tile -> Tile
+rotate (OnBoard c d e f a b) = OnBoard a b c d e f
+rotate t = t
 
-friendlyPair : TilePos -> Tile
-friendlyPair C = OnBoard (Just (MkPiece White))
-                         Nothing
-                         (Just (MkPiece White))
-                         Nothing 
-                         Nothing
-                         Nothing
-friendlyPair D = OnBoard Nothing
-                         (Just (MkPiece Black))
-                         Nothing
-                         (Just (MkPiece Black))
-                         Nothing 
-                         Nothing
-friendlyPair e = doubleRotate (friendlyPair ((succ^4) e))
-
-unFriendlyPair : TilePos -> Tile
-unFriendlyPair C = OnBoard (Just (MkPiece White))
-                           Nothing
-                           Nothing
-                           (Just (MkPiece Black))
-                           Nothing
-                           Nothing
-unFriendlyPair D = OnBoard Nothing
-                           (Just (MkPiece Black))
-                           Nothing
-                           Nothing
-                           (Just (MkPiece White))
-                           Nothing 
-unFriendlyPair e = doubleRotate (unFriendlyPair ((succ^4) e))
-
+pairedTiles : (friendly : Bool) -> (posFstTile : TilePos) -> Tile
+pairedTiles fr C = toTile True False fr (not fr) False False
+pairedTiles fr D = toTile False True False fr (not fr) False
+pairedTiles fr e = rotate (pairedTiles fr ((succ^4) e))
+        
 Board : Type 
 Board = HexGrid 2 Tile
 
@@ -76,10 +56,8 @@ laurentius = lfr _ where
   lfr : (n : Nat) -> HexChain (S n) Z Tile
   lfr n with (hexPosFromNat n)
     lfr Z | Origin = emptyTile::Nil
-    lfr (S k) | (Pos Z e FZ) = friendlyPair (pred e) :: lfr k
-    lfr (S k) | (Pos (S Z) e FZ) = friendlyPair (pred e) :: lfr k
-    lfr (S k) | (Pos (S Z) e (FS FZ)) = unFriendlyPair e :: lfr k
     lfr (S k) | (Pos (S (S ppr)) _ _) = emptyTile :: lfr k
+    lfr (S k) | (Pos _ e t) = pairedTiles (t == FZ) (pred e) :: lfr k
 
 emptyBoard : Board
 emptyBoard = replicate _ emptyTile 

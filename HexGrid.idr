@@ -81,7 +81,7 @@ instance Enum HexPos where
   pred (Pos r e FZ) = Pos r ((succ^5)  e) last
   pred (Pos r e (FS pt)) = Pos r e (weaken pt)
   
-  -- That function sucks in term of complexity but could be
+  -- That function sucks in terms of complexity but could be
   -- useful to prove things related to pred (not sure though)
   succ Origin = Pos Z C FZ
   succ (Pos r B t) = (pred^r) (Pos (S r) C (weaken t))
@@ -144,8 +144,6 @@ replicate {beg=beg} rep x = rewrite sym (plusCommutative rep beg) in
                                      replicate' rep x where
                                        replicate' Z x = Nil
                                        replicate' (S k) x = x::(replicate' k x)
-
--- replicate rep x = x::(rep x)
 
 endPos : HexChain end beg a -> Nat
 endPos {end=end} hc = end
