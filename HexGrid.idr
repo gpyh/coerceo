@@ -11,7 +11,7 @@ import Data.Vect
 infixr 8 ^
 (^) : (a -> a) -> Nat -> (a -> a)
 (^) f Z = id
-(^) f (S k) = f . (f^k)
+(^) f (S k) = (f^k) . f
 
 ------------------
 -- HexDirection --
@@ -60,6 +60,11 @@ instance Ord HexDirection where
 -- HexPos --
 ------------
 
+-- Mainly used for views
+-- Because it can be used for powerful mattern matching
+-- Not sure though (I'm keeping it as a 'legacy')
+-- And it can be useful for drawing 
+
 -- A position is either :
 -- - the Origin (the position of the center tile), or
 -- - a combination (Pos) of :
@@ -81,6 +86,8 @@ instance Enum HexPos where
   pred (Pos r e FZ) = Pos r ((succ^5)  e) last
   pred (Pos r e (FS pt)) = Pos r e (weaken pt)
   
+  -- That function sucks in term of complexity but could be
+  -- useful to prove things related to pred (not sure though)
   succ Origin = Pos Z C FZ
   succ (Pos r B t) = (pred^r) (Pos (S r) C (weaken t))
   succ (Pos r e t) = (pred^r) (Pos r (succ e) t)
@@ -90,13 +97,10 @@ instance Enum HexPos where
     nrings Z = 1
     nrings (S k) = 6*(S k) + nrings k
 
-  fromNat Z = Origin
-  fromNat (S k) = succ (fromNat k)
+  fromNat n = (succ^n) Origin
 
--- Proof that succ (pred (Pos r e t)) = Pos r e t
--- succ_pred : (r:Nat) -> (e:HexDirection) -> (t:(Fin (S r))) ->
-            -- succ (pred (Pos r e t)) = Pos r e t
--- succ_pred Z C FZ = Refl
+hexPosFromNat : Nat -> HexPos
+hexPosFromNat n = fromNat n
 
 instance Eq HexPos where
   (==) Origin Origin = True
@@ -128,10 +132,10 @@ add (S k) p = succ (add k p)
 --------------
 
 -- A HexChain is a list of elements
--- where you know the position of the first element
--- and the one who should come after the chain
+-- where you know the position of the first element on a hypothetical grid
+-- and the one who should come after the chain on that same grid
 
-data HexChain : HexPos -> HexPos -> Type -> Type where
+data HexChain : Nat -> Nat -> Type -> Type where
   Nil : HexChain end end a
   (::) : a -> HexChain end beg a -> HexChain (succ end) beg a
 
@@ -140,21 +144,22 @@ data HexChain : HexPos -> HexPos -> Type -> Type where
 (++) Nil ys = ys
 (++) (x::xs) ys = x::(xs ++ ys)
 
--- For now no type inference, meaning when using rep
--- you must supply both the end position and the number of repetitions
--- Could be solved by asking for the end position instead? Maybe...
-rep : (n : Nat) -> (p : HexPos) -> a -> HexChain (add n p) p a
-rep Z _ _ = Nil
-rep (S k) p x = x::(rep k p x)
+replicate : (rep : Nat) -> a -> HexChain (beg+rep) beg a
+replicate {beg=beg} rep x = rewrite sym (plusCommutative rep beg) in
+                                     replicate' rep x where
+                                       replicate' Z x = Nil
+                                       replicate' (S k) x = x::(replicate' k x)
 
-updateAt' : (n : Nat) -> (f : a -> a) -> HexChain end beg a -> HexChain end beg a
-updateAt' Z f hc = hc 
-updateAt' (S k) f Nil = Nil
-updateAt' (S Z) f (x::xs) = (f x)::xs
-updateAt' (S (S k)) f (x::xs) = x::(updateAt' (S k) f xs)
+-- replicate rep x = x::(rep x)
 
-updateAt : (p : HexPos) -> (f : a -> a) -> HexChain end beg a -> HexChain end beg a
-updateAt {end=end} p f hc = updateAt' (diff end p) f hc
+endPos : HexChain end beg a -> Nat
+endPos {end=end} hc = end
+
+updateAt : (p : Nat) -> (f : a -> a) -> HexChain end beg a -> HexChain end beg a
+updateAt p f Nil = Nil
+updateAt p f (x::xs) = if p == endPos xs
+                       then (f x)::xs
+                       else x::(updateAt p f xs)
 
 -------------
 -- HexGrid --
@@ -165,5 +170,5 @@ updateAt {end=end} p f hc = updateAt' (diff end p) f hc
 -- has only completed rings
 -- n gives the number of rings
 HexGrid : Nat -> Type -> Type
-HexGrid n a = HexChain (Pos n C FZ) Origin a 
+HexGrid n a = HexChain (toNat (Pos n C FZ)) Z a 
 
