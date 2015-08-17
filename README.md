@@ -70,3 +70,11 @@ Then, we could do the following improvements:
 whatnot
 - Create a DSL to interact with the game ; this can open up to a lot of other
 applications (I might actually do that for deserializing)
+
+## Licensing
+
+I'm not good at this, so, whatever is needed to state that anything related
+to Coerceo (concept, artwork, trademark, etc.) belongs to the publishing
+company of the Coerceo.
+
+I don't know what's the implication on my code though. But I don't care.
