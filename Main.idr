@@ -1,6 +1,7 @@
 module Main
 
 import HexGrid
+import Utils
 import Data.Fin
 
 TilePos : Type
