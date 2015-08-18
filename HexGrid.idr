@@ -45,12 +45,7 @@ instance Ord HexDirection where
 -- HexPos --
 ------------
 
--- Mainly used for views
--- Because it can be used for powerful mattern matching
--- Not sure though (I'm keeping it as a 'legacy')
--- And it can be useful for drawing 
-
--- A position is either :
+-- Allows to express the position on a HexChain as either :
 -- - the Origin (the position of the center tile), or
 -- - a combination (Pos) of :
 --      * the position of the 'ring' (0 or 1 ; more for a bigger board)
@@ -71,21 +66,24 @@ instance Enum HexPos where
   pred (Pos r e FZ) = Pos r ((succ^5)  e) last
   pred (Pos r e (FS pt)) = Pos r e (weaken pt)
   
-  -- That function sucks in terms of complexity but could be
-  -- useful to prove things related to pred (not sure though)
+  -- Not the most optimized code (there's a useless call to succ)
+  -- Totality checker doesn't like it either
+  -- BUT there's no need to check for the bound of t
   succ Origin = Pos Z C FZ
-  succ (Pos r B t) = (pred^r) (Pos (S r) C (weaken t))
-  succ (Pos r e t) = (pred^r) (Pos r (succ e) t)
+  succ (Pos Z B FZ) = Pos (S Z) C FZ
+  succ (Pos Z e t) = Pos Z (succ e) t
+  succ (Pos (S r) e FZ) = Pos (S r) e (FS FZ) 
+  succ (Pos (S r) e (FS t)) with (assert_total (succ (Pos r e t)))
+    | Pos sr se FZ = Pos (S sr) se FZ
+    | Pos sr _ st = Pos (S sr) e (FS st)
+    | Origin = Origin -- Just so the totality checker doesn't freak out
 
   toNat Origin = Z
   toNat (Pos r e t) = nrings r + (toNat e)*(S r) + (finToNat t) where
     nrings Z = 1
     nrings (S k) = 6*(S k) + nrings k
-
+  
   fromNat n = (succ^n) Origin
-
-hexPosFromNat : Nat -> HexPos
-hexPosFromNat n = fromNat n
 
 instance Eq HexPos where
   (==) Origin Origin = True
@@ -117,33 +115,58 @@ add (S k) p = succ (add k p)
 --------------
 
 -- A HexChain is a list of elements
--- where you know the position of the first element on a hypothetical grid
--- and the one who should come after the chain on that same grid
+-- where you know the position of the first element on a hypothetical
+-- hexagonal grid (HexGrid) and the position of the last tile if you
+-- added one (the possition of the 'following' tile)
 
-data HexChain : Nat -> Nat -> Type -> Type where
-  Nil : HexChain end end a
-  (::) : a -> HexChain end beg a -> HexChain (succ end) beg a
+data HexChain : HexPos -> HexPos -> Type -> Type where
+  Nil : HexChain beg beg a
+  (::) : a -> HexChain end beg a -> HexChain (succ end) beg  a
 
--- Append two chains (transitivity verified without effort, so cool! )
+instance Functor (HexChain end beg) where
+  map m Nil = Nil
+  map m (x :: xs) = m x :: map m xs
+
+instance Foldable (HexChain end beg) where
+  foldr f e hc = foldr' f e id hc where
+    foldr' : (a -> acc -> acc) -> acc -> (acc -> acc) ->
+             HexChain end beg a -> acc
+    foldr' f e go Nil = go e
+    foldr' f e go (x :: xs) = foldr' f e (go . (f x)) xs
+
+instance Traversable (HexChain end beg) where
+  traverse f Nil = pure Nil
+  traverse f (x :: xs) = [| f x :: traverse f xs |]
+
+-- Append two chains 
+-- Transitiviy is free! :D
 (++) : HexChain end mid a -> HexChain mid beg a -> HexChain end beg a
 (++) Nil ys = ys
 (++) (x::xs) ys = x::(xs ++ ys)
 
-replicate : (rep : Nat) -> a -> HexChain (beg+rep) beg a
-replicate {beg=beg} rep x = rewrite sym (plusCommutative rep beg) in
-                                     replicate' rep x where
-                                       replicate' Z x = Nil
-                                       replicate' (S k) x = x::(replicate' k x)
+replicate : (n : Nat) -> a -> HexChain ((succ^n) beg) beg a
+replicate Z _ = Nil 
+replicate (S k) x = x :: replicate k x
 
-endPos : HexChain end beg a -> Nat
-endPos {end=end} hc = end
+endPos : HexChain end beg a -> HexPos
+endPos {end} hc = end 
 
-updateAt : (p : Nat) -> (f : a -> a) -> HexChain end beg a -> HexChain end beg a
+updateAt : (p : HexPos) -> (f : a -> a) ->
+           HexChain end beg a -> HexChain end beg a
 updateAt p f Nil = Nil
 updateAt p f (x::xs) = if p == endPos xs
                        then (f x)::xs
                        else x::(updateAt p f xs)
 
+-- Alternative update fuction so it can handle the Maybe's
+-- That's just temporary though, until I find a better way to
+-- manage exceptions (and I learn how to better do the monadic black magic)
+mUpdateAt : (Alternative app) => (p : HexPos) -> (f : a -> app a) ->
+      HexChain end beg a -> app (HexChain end beg a)
+mUpdateAt p f Nil = empty
+mUpdateAt p f (x::xs) = if p == endPos xs
+                       then liftA2 (::) (f x) (pure xs)
+                       else liftA2 (::) (pure x) (mUpdateAt p f xs)
 -------------
 -- HexGrid --
 -------------
@@ -153,5 +176,5 @@ updateAt p f (x::xs) = if p == endPos xs
 -- has only completed rings
 -- n gives the number of rings
 HexGrid : Nat -> Type -> Type
-HexGrid n a = HexChain (toNat (Pos n C FZ)) Z a 
+HexGrid n a = HexChain (Pos n C FZ) Origin a 
 
