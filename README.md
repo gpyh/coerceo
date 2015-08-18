@@ -54,8 +54,8 @@ The following core features are essential and should be implemented in the follo
 weeks:
 
 - Representing the board in memory (done)
-- Initializing the board (done)
-- Moving the pieces
+- Initializing the board (done, but needs refactoring)
+- Moving the pieces (almost done)
 - Capturing the pieces
 - Shriking the board
 - Sniping the pieces
@@ -71,6 +71,7 @@ whatnot
 - Create a DSL to interact with the game ; this can open up to a lot of other
 applications (I might actually do that for deserializing)
 
+
 ## Licensing
 
 I'm not good at this, so, whatever is needed to state that anything related
@@ -78,3 +79,4 @@ to Coerceo (concept, artwork, trademark, etc.) belongs to the publishing
 company of the Coerceo.
 
 I don't know what's the implication on my code though. But I don't care.
+

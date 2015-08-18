@@ -9,9 +9,6 @@ import Data.Vect
 -- Bunch of types --
 --------------------
 
--- noNat
-
-
 PiecePos : Type
 PiecePos = HexDirection 
 
@@ -35,98 +32,96 @@ data Tile : Type where
   OnB : Vect 3 (Maybe (Piece White)) ->
         Vect 3 (Maybe (Piece Black)) -> Tile
 
+toColorIndex : PiecePos -> (Color, Fin 3)
+toColorIndex A = (White, FS (FS FZ))
+toColorIndex B = (Black, FS (FS FZ))
+toColorIndex e with (toColorIndex ((succ^2) e))
+  | MkPair color (FS index) = (color, weaken index)
+
 Board : Type 
 Board = HexGrid 2 Tile
 
---------------------
--- A little trick --
---------------------
+------------------
+-- Useful stuff --
+------------------
 
--- The idea is to only define behavior for position C and D
--- Then, you just rotate the tile to end up with C and D
--- and rotate twice again after function application to land on your feet
--- This is cool, but FIXME.
--- This breaks totality so I should find a way to write the functions properly
+pop : Fin n -> Vect n (Maybe a) -> (Vect n (Maybe a), Maybe a)
+pop _ Nil = (Nil, Nothing)
+pop FZ (x :: xs) = ((Nothing :: xs), x)
+pop (FS k) (x :: xs) = let (ys, y) = pop k xs in (x :: ys, y)
 
-shift : Vect 3 a -> Vect 3 a
-shift (x :: y :: z :: Nil) = z :: x :: y :: Nil
+push : a -> Fin n -> Vect n (Maybe a) -> Maybe (Vect n (Maybe a))
+push _ _ Nil = Nothing
+push y FZ (Nothing :: xs) = Just (Just y :: xs)
+push _ FZ (x :: xs) = Nothing
+push y (FS k) (x :: xs) = map ((::) x) (push y k xs)
 
--- rotates clockwise by 2
-rotate : Tile -> Tile
-rotate (OnB w b) = OnB (shift w) (shift b)
-rotate t = t
+----------------------------
+-- Adding/Removing Pieces --
+----------------------------
+
+-- All the error handling is made with Maybe
+-- Which is also used to identify presence/absence of a tile (aaargh !)
+-- TODO: Implement proper exceptions
+
+||| Removes a piece from a tile
+||| Returns the updated tile and the removed piece
+||| If there was no piece to remove, for any reason, the piece is Nothing
+popPiece : PiecePos -> Tile -> (Tile, Maybe (Piece color))
+popPiece _ (NotOnB o) = (NotOnB o, Nothing) 
+popPiece e (OnB w b) with (toColorIndex e)
+  popPiece {color = White} e (OnB w b) | MkPair White n =
+    let (trio, piece) = pop n w in (OnB trio b, piece)
+  popPiece {color = Black} e (OnB w b) | MkPair Black n =
+    let (trio, piece) = pop n b in (OnB w trio, piece)
+
+
+||| Adds a piece to a tile
+||| Returns the update tile or Nothing if it was imposible to at the piece
+||| (for any reason)
+pushPiece : Piece color -> PiecePos -> Tile -> Maybe Tile
+pushPiece _ _ (NotOnB _) = Nothing
+pushPiece c pp (OnB w b) with (toColorIndex pp)
+  pushPiece {color = White} c pp (OnB w b) | MkPair White n =
+    liftA2 OnB (push c n w) (Just b)
+  pushPiece {color = Black} c pp (OnB w b) | MkPair Black n =
+    liftA2 OnB (Just w) (push c n b)
+                       
+mUpdateAt : (Alternative app) => (p : HexPos) -> (f : a -> app a) ->
+      HexChain end beg a -> app (HexChain end beg a)
+mUpdateAt p f Nil = empty
+mUpdateAt p f (x::xs) = if p == endPos xs
+                       then liftA2 (::) (f x) (pure xs)
+                       else liftA2 (::) (pure x) (mUpdateAt p f xs)
+
+removePiece : FieldPos -> Board -> Maybe Board 
+removePiece (MkFieldPos tp pp) b = mUpdateAt tp rm b where
+  rm : Tile -> Maybe Tile
+  rm t with (toColorIndex pp)
+    | MkPair color _ with (popPiece {color = color} pp t)
+      | MkPair (NotOnB _) _ = Nothing
+      | MkPair _ Nothing = Nothing
+      | MkPair tile _ = Just tile 
+
+addPiece : FieldPos -> Board -> Maybe Board
+addPiece (MkFieldPos tp pp) b = mUpdateAt tp add b where
+  add : Tile -> Maybe Tile
+  add t with (toColorIndex pp)
+    | MkPair color _ = pushPiece (MkPiece color) pp t
 
 --------------------
 -- Starting board --
 --------------------
 
--- Dangerous stuff!
--- Coercing into booleans is ill-advised!
--- That's fighting against the type system
--- It's used to make pairedTiles more elegant
--- I should do without: TODO
-toTile : Bool -> Bool -> Bool -> Bool -> Bool -> Bool -> Tile
-toTile c d e f a b =
-  OnB (p c :: p e :: p a :: Nil) (p d :: p f :: p b :: Nil) where
-     p : Bool -> Maybe (Piece color)
-     p False = Nothing
-     p True = Just (MkPiece color)
+emptyBoard : Board
+emptyBoard = replicate 19 emptyTile where
+  emptyTile = OnB (Nothing :: Nothing :: Nothing :: Nil)
+                  (Nothing :: Nothing :: Nothing :: Nil)
 
-pairedTiles : (friendly : Bool) -> (posFstTile : PiecePos) -> Tile
-pairedTiles fr C = toTile True False fr (not fr) False False
-pairedTiles fr D = toTile False True False fr (not fr) False
-pairedTiles fr e = rotate (pairedTiles fr ((succ^4) e))
+-- TODO: redo the Laurentius but with actions on an empty board
 
-emptyTile : Tile
-emptyTile = OnB (nothing White) (nothing Black) where
-  nothing : (color : Color) -> Vect 3 (Maybe (Piece color))
-  nothing color = Nothing :: Nothing :: Nothing :: Nil
-
-laurentius : Board
-laurentius = lrt 18 where
-  lrt : (n : Nat) -> HexChain ((succ^(S n)) beg) beg Tile
-  lrt n with ((succ^n) Origin)
-    lrt Z | Origin = emptyTile :: Nil 
-    lrt (S k) | (Pos (S (S ppr)) _ _) = emptyTile :: lrt k
-    lrt (S k) | (Pos r e t) = pairedTiles (t == FZ) (pred e) :: lrt k
-
--------------------
--- Moving Pieces --
--------------------
-
--- All the error handling is made with Maybe
--- TODO: Implement proper exceptions
-
-pop : Vect n (Maybe a) -> Maybe (Vect n (Maybe a))
-pop Nil = Nothing
-pop (Nothing::xs) = Nothing 
-pop (x::xs) = Just (Nothing::xs)
-
-popPiece : PiecePos -> Tile -> Maybe Tile
-popPiece _ (NotOnB _) = Nothing
-popPiece C (OnB w b) = liftA2 OnB (pop w) (Just b)
-popPiece D (OnB w b) = liftA2 OnB (Just w) (pop b)
-popPiece e t = liftA (rotate^2) (popPiece ((succ^4) e) (rotate t))
-
-push : a -> Vect n (Maybe a) -> Maybe (Vect n (Maybe a))
-push _ Nil = Nothing
-push y (Nothing::xs) = Just ((Just y)::xs)
-push _ (x::xs) = Nothing
-
-pushPiece : Piece color -> PiecePos -> Tile -> Maybe Tile
-pushPiece _ _ (NotOnB _) = Nothing
-pushPiece {color=White} p C (OnB w b) = liftA2 OnB (push p w) (Just b)
-pushPiece {color=Black} p D (OnB w b) = liftA2 OnB (Just w) (push p b)
-pushPiece p e t = liftA (rotate^2) (pushPiece p ((succ^4) e) (rotate t))
-                       
--- (f : a -> m a) -> (g : a -> b -> b) -> b -> m b
--- (a -> b -> c) -> (m a -> m b -> m c)
--- liftA2 (::) (f x) xs
-
--- removePiece : Nat -> PiecePos -> Board -> Maybe Board
--- removePiece t e b = mUpdateAt t (\x => popPiece e x) b
-
--- addPiece : Nat -> PiecePos -> Board -> Maybe Board
--- addPiece t e b = mUpdate t (\x => pushPiece e x) b
-
--- TODO: Unfinished
+test : Maybe Board
+test = do
+  b <- addPiece (MkFieldPos Origin C) emptyBoard
+  b <- removePiece (MkFieldPos Origin C) b
+  return b

@@ -45,16 +45,16 @@ instance Ord HexDirection where
 -- HexPos --
 ------------
 
--- Allows to express the position on a HexChain as either :
--- - the Origin (the position of the center tile), or
--- - a combination (Pos) of :
---      * the position of the 'ring' (0 or 1 ; more for a bigger board)
---      * the 'edge', also the direction of the branch
---        it's the direction you need to take to access the next tile
---      * the position of the 'tile', which is the index on the edge ;
---        it goes from 0 to the index of the current ring
--- So the board is both a spiral of tiles
--- and a polar grid of 6 axes
+||| Allows to express the position on a HexChain as either :
+||| - the Origin (the position of the center tile), or
+||| - a combination (Pos) of :
+|||      * the position of the 'ring' (0 or 1 ; more for a bigger board)
+|||      * the 'edge', also the direction of the branch
+|||        it's the direction you need to take to access the next tile
+|||      * the position of the 'tile', which is the index on the edge ;
+|||        it goes from 0 to the index of the current ring
+||| So the board is both a spiral of tiles
+||| and a polar grid of 6 axes
 data HexPos : Type where
   Origin : HexPos
   Pos : (r:Nat) -> HexDirection -> (Fin (S r)) -> HexPos
@@ -66,7 +66,7 @@ instance Enum HexPos where
   pred (Pos r e FZ) = Pos r ((succ^5)  e) last
   pred (Pos r e (FS pt)) = Pos r e (weaken pt)
   
-  -- Not the most optimized code (there's a useless call to succ)
+  -- FIXME: Not the most optimized code (there's a useless call to succ)
   -- Totality checker doesn't like it either
   -- BUT there's no need to check for the bound of t
   succ Origin = Pos Z C FZ
@@ -114,11 +114,13 @@ add (S k) p = succ (add k p)
 -- HexChain --
 --------------
 
--- A HexChain is a list of elements
--- where you know the position of the first element on a hypothetical
--- hexagonal grid (HexGrid) and the position of the last tile if you
--- added one (the possition of the 'following' tile)
+-- TODO: Test what happens when using HexPos in a Tile data type
+-- in order to locate them
 
+||| A HexChain is a list of elements
+||| where you know the position of the first element on a hypothetical
+||| hexagonal grid (HexGrid) and the position of the last tile if you
+||| added one (the possition of the 'following' tile)
 data HexChain : HexPos -> HexPos -> Type -> Type where
   Nil : HexChain beg beg a
   (::) : a -> HexChain end beg a -> HexChain (succ end) beg  a
@@ -138,8 +140,8 @@ instance Traversable (HexChain end beg) where
   traverse f Nil = pure Nil
   traverse f (x :: xs) = [| f x :: traverse f xs |]
 
--- Append two chains 
--- Transitiviy is free! :D
+||| Appends two chains 
+||| Transitiviy is free! :D
 (++) : HexChain end mid a -> HexChain mid beg a -> HexChain end beg a
 (++) Nil ys = ys
 (++) (x::xs) ys = x::(xs ++ ys)
@@ -158,23 +160,13 @@ updateAt p f (x::xs) = if p == endPos xs
                        then (f x)::xs
                        else x::(updateAt p f xs)
 
--- Alternative update fuction so it can handle the Maybe's
--- That's just temporary though, until I find a better way to
--- manage exceptions (and I learn how to better do the monadic black magic)
-mUpdateAt : (Alternative app) => (p : HexPos) -> (f : a -> app a) ->
-      HexChain end beg a -> app (HexChain end beg a)
-mUpdateAt p f Nil = empty
-mUpdateAt p f (x::xs) = if p == endPos xs
-                       then liftA2 (::) (f x) (pure xs)
-                       else liftA2 (::) (pure x) (mUpdateAt p f xs)
 -------------
 -- HexGrid --
 -------------
 
--- A HexGrid is just a chain that
--- starts at the Origin and
--- has only completed rings
--- n gives the number of rings
-HexGrid : Nat -> Type -> Type
+||| A HexGrid is just a chain that starts at the Origin and
+||| has only completed rings
+||| @n The number of rings
+HexGrid : (n : Nat) -> Type -> Type
 HexGrid n a = HexChain (Pos n C FZ) Origin a 
 
