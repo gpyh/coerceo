@@ -57,26 +57,32 @@ instance Ord HexDirection where
 ||| and a polar grid of 6 axes
 data HexPos : Type where
   Origin : HexPos
-  Pos : (r:Nat) -> HexDirection -> (Fin (S r)) -> HexPos
+  Pos : (r : Nat) -> HexDirection -> (Fin (S r)) -> HexPos
+
+data IsEndEdge : Type where
+  EndEdge : IsEndEdge 
+  NotEndEdge : Fin r -> IsEndEdge
+
+isEndEdge : HexPos -> IsEndEdge
+isEndEdge Origin = EndEdge 
+isEndEdge (Pos Z _ _) = EndEdge
+isEndEdge (Pos (S pr) _ t) with (strengthen t)
+  | Left st = EndEdge
+  | Right st = NotEndEdge st
 
 instance Enum HexPos where
   pred Origin = Origin
   pred (Pos Z C FZ) = Origin
   pred (Pos (S pr) C FZ) = Pos pr B last 
-  pred (Pos r e FZ) = Pos r ((succ^5)  e) last
+  pred (Pos r e FZ) = Pos r (pred e) last
   pred (Pos r e (FS pt)) = Pos r e (weaken pt)
   
-  -- FIXME: Not the most optimized code (there's a useless call to succ)
-  -- Totality checker doesn't like it either
-  -- BUT there's no need to check for the bound of t
   succ Origin = Pos Z C FZ
-  succ (Pos Z B FZ) = Pos (S Z) C FZ
-  succ (Pos Z e t) = Pos Z (succ e) t
-  succ (Pos (S r) e FZ) = Pos (S r) e (FS FZ) 
-  succ (Pos (S r) e (FS t)) with (assert_total (succ (Pos r e t)))
-    | Pos sr se FZ = Pos (S sr) se FZ
-    | Pos sr _ st = Pos (S sr) e (FS st)
-    | Origin = Origin -- Just so the totality checker doesn't freak out
+  succ (Pos r e t) with (isEndEdge (Pos r e t))
+    | EndEdge = if e == B
+                then Pos (S r) C FZ
+                else Pos r (succ e) FZ
+    | NotEndEdge {r = r'} t' = Pos r' e (FS t')
 
   toNat Origin = Z
   toNat (Pos r e t) = nrings r + (toNat e)*(S r) + (finToNat t) where
@@ -164,9 +170,32 @@ updateAt p f (x::xs) = if p == endPos xs
 -- HexGrid --
 -------------
 
-||| A HexGrid is just a chain that starts at the Origin and
-||| has only completed rings
+||| A HexGrid is a chain that starts at the Origin and has n completed rings
+||| In particular, the board is a HexGrid with two rings
 ||| @n The number of rings
 HexGrid : (n : Nat) -> Type -> Type
 HexGrid n a = HexChain (Pos n C FZ) Origin a 
 
+move : HexDirection -> HexPos -> HexPos
+move d Origin = Pos Z ((succ^2) d) FZ
+move C (Pos r C t) with (isEndEdge (Pos r C t))
+  | EndEdge = Pos r D FZ
+  | NotEndEdge {r = r'} t' = Pos r' C (FS t')
+move D (Pos Z C FZ) = Origin
+move D (Pos (S pr) C t) with (isEndEdge (Pos (S pr) C t))
+  | EndEdge = Pos pr D FZ
+  | NotEndEdge {r = S pr'} t' = Pos pr' C t'
+move E (Pos r C FZ) = Pos r B last
+move E (Pos (S pr) C (FS pt)) = Pos pr C pt
+move F (Pos r C FZ) = Pos (S r) B last
+move F (Pos (S pr) C (FS pt)) = Pos (S pr) C (weaken pt)
+move A (Pos r C t) = Pos (S r) C (weaken t)
+move B (Pos r C t) = Pos (S r) C (FS t)
+move d (Pos r e t) with (move (pred d) (Pos r (pred e) t))
+  | (Pos r' e' t') = Pos r' (succ e') t'
+  | Origin = Origin
+
+adj : Nat -> HexPos -> List HexPos
+adj n p = filter ring (map ((flip move) p) [A,B,C,D,E,F]) where
+  ring Origin = True
+  ring (Pos r _ _) = r < n
